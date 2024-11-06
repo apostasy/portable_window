@@ -2,7 +2,7 @@ with Interfaces.C.Strings;
 with Interfaces;
 with System;
 
-package body x11 is
+package body Window is
 
    package ICS renames Interfaces.C.Strings;
    package IC renames interfaces.C;
@@ -132,4 +132,4 @@ package body x11 is
          end case;
       end loop;
    end Window;
-end x11;
+end Window;

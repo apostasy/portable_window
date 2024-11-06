@@ -1,6 +1,6 @@
-with X11;
+with Window;
 
 procedure Portable_Window is
 begin
-   X11.Window;
+   Window.Window;
 end Portable_Window;
