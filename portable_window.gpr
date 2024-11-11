@@ -3,18 +3,19 @@ project Portable_Window is
 
    for Languages use ("ada", "c");
 
-   type Window_System is ("win32", "x11");
-   WS : Window_System := "win32";
-
    Sources := ("src", "config");
    Link_Switches := ("");
-   case WS is
-      when "win32" => 
+   
+   case portable_window_config.Alire_Host_Os is
+      when "windows" => 
          Sources := Sources & ("src/win32");
          Link_Switches := Link_Switches & ("-lgdi32", "-llargeint");
-      when "x11"   => 
+      when "linux"   => 
          Sources := Sources & ("src/x11");
          Link_Switches := Link_Switches &  ("-L/usr/lib/X11", "-lX11", "-lXext");
+      when "macos"   =>
+         Sources := Sources & ("src/x11");
+         Link_Switches := Link_Switches &  ("-lX11", "-L/usr/X11/lib");
    end case;
 
    for Source_Dirs use Sources;
@@ -24,7 +25,7 @@ project Portable_Window is
    for Main use ("portable_window.adb");
 
    package Compiler is
-      for Default_Switches ("Ada") use Portable_Window_Config.Ada_Compiler_Switches;
+      for Default_Switches ("Ada") use Portable_Window_Config.Ada_Compiler_Switches & ("-gnat2022", "-gnatX");
    end Compiler;
 
    package Linker is
