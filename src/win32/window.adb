@@ -200,15 +200,17 @@ package body Window is
       PS   : aliased PAINTSTRUCT;
       H_Dc : HDC;
       Bmi  : aliased BITMAPINFO;
-      Buffer : Byte_Array := (255, 0, 0, 255, 255, 0, 0, 255,
-                              255, 0, 0, 255, 255, 0, 0, 255);
+      Buffer : Byte_Array := (0, 0, 255, 255,    -- First pixel (BGRA)
+                             0, 0, 255, 255,      -- Second pixel
+                             0, 0, 255, 255,      -- Third pixel
+                             0, 0, 255, 255);     -- Fourth pixel
       R_Set_DI : IC.int;
       R_End_Paint : Boolean;
       Last_Err : DWORD;
    begin
-      Put_Line ("f** Window Handle: " & H_Wnd'Image);
+      Put_Line ("Window Handle: " & H_Wnd'Image);
       H_Dc := Begin_Paint (H_Wnd, PS'Access);
-
+   
       Put_Line (H_Dc'Image);
       Bmi.bmiHeader.biSize := BITMAPINFOHEADER'Size;
       bmi.bmiHeader.biWidth := 2;
@@ -216,18 +218,27 @@ package body Window is
       bmi.bmiHeader.biPlanes := 1;
       bmi.bmiHeader.biBitCount := 32;
       bmi.bmiHeader.biCompression := BI_RGB;
-      R_Set_DI := Set_DI_Bits_To_Device (H_Dc, 0, 0, 2, 2, 0, 0, 0, 2, 
-                                         Buffer'Address, Bmi'Access, DIB_RGB_COLORS);
+      
+      R_Set_DI := Set_DI_Bits_To_Device (
+         H_Dc, 0, 0,           -- Destination x, y
+         2, 2,                 -- Width, Height
+         0, 0,                 -- Source x, y
+         0, 2,                 -- First scan line, number of scan lines
+         Buffer'Address,       -- Array of bits
+         Bmi'Access,          -- Bitmap info
+         DIB_RGB_COLORS       -- RGB or Palette
+      );
+      
+      if R_Set_DI = 0 then
+         Last_Err := Get_Last_Error;
+         Put_Line ("SetDIBitsToDevice failed with error: " & Last_Err'Image);
+      end if;
+   
+      R_End_Paint := End_Paint (H_Wnd, PS'Access);
       
       Last_Err := Get_Last_Error;
       Put_Line (Last_Err'Image);
-      --Put_Line (R_Set_DI'Image);
-      R_End_Paint := End_Paint (H_Wnd, PS'Access);
-      --Put_Line (R_End_Paint'Image);
-
-      Last_Err := Get_Last_Error;
-      Put_Line (Last_Err'Image);
-   end;
+   end Draw_Buffer;
 
    procedure Fill_Black (H_Wnd : HWND) is
       PS : aliased PAINTSTRUCT;
@@ -249,7 +260,6 @@ package body Window is
                Post_Quit_Message (0);
             when WM_PAINT =>
                Fill_Black (H_Wnd);
-
                --  Draw_Buffer (H_Wnd);
             when others =>
                 return Def_Window_Proc(H_Wnd, Msg, W_Param, L_Param);
