@@ -7,6 +7,39 @@ package body Window is
    package ICS renames Interfaces.C.Strings;
    package IC renames interfaces.C;
 
+   D : constant := 1.0 / 256.0;
+  type intensity is delta D range 0.0 .. 1.0 with size => 8;
+  function Max return intensity is
+      (1.0 - D);
+
+  -- Note that Max_Lines and Max_Length need to be static
+    type color_data is array (positive range <>, positive range <>) of intensity;
+
+    type image (width : natural := 0; height : natural := 0) is
+    record
+        r : color_data (1 .. width, 1 .. height);
+        g : color_data (1 .. width, 1 .. height);
+        b : color_data (1 .. width, 1 .. height);
+        a : color_data (1 .. width, 1 .. height);
+    end record;
+
+   type bool is new boolean;
+   for bool'size use 8;
+   type color is record
+      r : intensity;
+      g : intensity;
+      b : intensity;
+      a : intensity;
+   end record;
+   for color use
+     record
+       b at 0 range 0 .. 7;
+       g at 1 range 0 .. 7;
+       r at 2 range 0 .. 7;
+       a at 3 range 0 .. 7;
+     end record;
+   for color'Size use ic.unsigned_long'size;
+
    Exposure_Mask         : constant := 32768;
    Expose                : constant := 12;
 
@@ -37,6 +70,20 @@ package body Window is
    type X_Graphic_Context_Access is access all X_Graphic_Context;
 
    type Const_Char_Access is access constant IC.char;
+
+  procedure X_Set_Foreground
+     (display    : X_Display_Access;
+      gc         : X_Graphic_Context_Access;
+      foreground : ic.unsigned_long)
+   with Import => True, Convention => c, External_Name => "XSetForeground";
+     
+  procedure X_Draw_Point
+     (display : X_Display_Access;
+      w       : X_Window;
+      gc      : X_Graphic_Context_Access;
+      x       : ic.int;
+      y       : ic.int)
+   with Import => True, Convention => c, External_Name => "XDrawPoint";
 
    function X_Open_Display
      (Display_Name : ICS.Chars_Ptr) return X_Display_Access
@@ -97,21 +144,56 @@ package body Window is
       return X_Graphic_Context_Access
    with Import => True, Convention => C, External_Name => "XDefaultGC";
 
+
+  Display    : X_Display_Access := X_Open_Display (ICS.Null_Ptr);
+  Screen_num : IC.Int := X_Default_Screen (Display);
+  Win        : X_Window :=
+    X_Create_Simple_Window
+      (Display,
+        X_Default_Root_Window (Display),
+        50,
+        50,
+        250,
+        250,
+        1,
+        X_Black_Pixel (Display, Screen_num),
+        X_White_Pixel (Display, Screen_num));
+
+   procedure draw_image_to_window (img : Image) is
+      use ic;
+
+      procedure draw_pixel (x : ic.int; y : ic.int; color : ic.unsigned_long)
+      is
+      begin
+         x_set_foreground (Display, X_Default_Graphic_Context (Display, 0), color);
+         x_draw_point (Display, win, X_Default_Graphic_Context (Display, 0), x, y);
+      end;
+
+      x0, y0 : ic.int := 0;
+
+   begin
+      for i in img.r'range(1) loop
+         for j in img.r'range(2) loop
+            declare
+               c       : color :=
+                 (img.r (i, j),
+                  img.g (i, j),
+                  img.b (i, j),
+                  img.a (i, j));
+               c_color : ic.unsigned_long;
+               for c_color'address use c'address;
+            begin
+               if c_color > 0 then
+                  draw_pixel (ic.int (i), ic.int (j), c_color);
+               end if;
+            end;
+         end loop;
+      end loop;
+   end;
+
    procedure Window is
       Event_Ptr  : X_Event_Access := new X_Event;
-      Display    : X_Display_Access := X_Open_Display (ICS.Null_Ptr);
-      Screen_num : IC.Int := X_Default_Screen (Display);
-      Win        : X_Window :=
-        X_Create_Simple_Window
-          (Display,
-           X_Default_Root_Window (Display),
-           50,
-           50,
-           250,
-           250,
-           1,
-           X_Black_Pixel (Display, Screen_num),
-           X_White_Pixel (Display, Screen_num));
+      c : color;
    begin
       X_Map_Window (Display, Win);
       X_Select_Input (Display, Win, Exposure_Mask);
@@ -127,6 +209,17 @@ package body Window is
                   100,
                   IC.To_C ("Thanks for Watching!"),
                   20);
+                declare
+                  c_color : ic.unsigned_long;
+                  for c_color'address use c'address;
+                begin
+                  c := (Max, 0.0, 0.0, Max);
+                  X_Set_Foreground (Display, X_Default_Graphic_Context (Display, 0), c_color);
+                  X_Draw_Point (Display, Win, X_Default_Graphic_Context (Display, 0), 50, 50);
+                  X_Draw_Point (Display, Win, X_Default_Graphic_Context (Display, 0), 50, 51);
+                  X_Draw_Point (Display, Win, X_Default_Graphic_Context (Display, 0), 51, 50);
+                  X_Draw_Point (Display, Win, X_Default_Graphic_Context (Display, 0), 51, 51);
+                end;
             when others =>
                null;
          end case;
