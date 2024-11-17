@@ -17,12 +17,16 @@ project Portable_Window is
          Sources := Sources & ("src/x11");
          Link_Switches := Link_Switches &  ("-lX11", "-L/usr/X11/lib");
    end case;
+   
+   for Library_Name use "Portable_Window";
+   for Library_Dir use "lib";
+   for Library_Kind use "static"; -- or "dynamic" for a shared library
 
    for Source_Dirs use Sources;
    for Object_Dir use "obj/" & Portable_Window_Config.Build_Profile;
    for Create_Missing_Dirs use "True";
    for Exec_Dir use "bin";
-   for Main use ("portable_window.adb");
+   -- for Main use ("portable_window.adb");
 
    package Compiler is
       for Default_Switches ("Ada") use Portable_Window_Config.Ada_Compiler_Switches & ("-gnat2022", "-gnatX");

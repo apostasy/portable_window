@@ -1,83 +1,50 @@
 with Interfaces.C.Strings;
 with Interfaces;
 with System;
+with Ada.Text_IO; use Ada.Text_IO;
 
 package body Window is
 
    package ICS renames Interfaces.C.Strings;
    package IC renames interfaces.C;
 
-   D : constant := 1.0 / 256.0;
-  type intensity is delta D range 0.0 .. 1.0 with size => 8;
-  function Max return intensity is
-      (1.0 - D);
-
-  -- Note that Max_Lines and Max_Length need to be static
-    type color_data is array (positive range <>, positive range <>) of intensity;
-
-    type image (width : natural := 0; height : natural := 0) is
-    record
-        r : color_data (1 .. width, 1 .. height);
-        g : color_data (1 .. width, 1 .. height);
-        b : color_data (1 .. width, 1 .. height);
-        a : color_data (1 .. width, 1 .. height);
-    end record;
-
-   type bool is new boolean;
-   for bool'size use 8;
-   type color is record
-      r : intensity;
-      g : intensity;
-      b : intensity;
-      a : intensity;
-   end record;
-   for color use
-     record
-       b at 0 range 0 .. 7;
-       g at 1 range 0 .. 7;
-       r at 2 range 0 .. 7;
-       a at 3 range 0 .. 7;
-     end record;
-   for color'Size use ic.unsigned_long'size;
-
-   Exposure_Mask         : constant := 32768;
-   Expose                : constant := 12;
+   Exposure_Mask : constant := 32768;
+   Expose : constant := 12;
 
    type X_Display_Access is new System.Address;
    type X_Window is new IC.Unsigned_Long;
 
    type X_Expose_Event is record
-         W      : X_Window;                      
-         Xx     : IC.int;
-         Y      : IC.int;
-         Width  : IC.int;
-         Height : IC.int;
-         Count  : IC.int;
+      W      : X_Window;
+      Xx     : IC.int;
+      Y      : IC.int;
+      Width  : IC.int;
+      Height : IC.int;
+      Count  : IC.int;
    end record;
-   
-   type X_Event is record 
-        Event_Type   : IC.int;                        
-        Serial       : IC.unsigned_long;                     
-        Send_Event   : Boolean;                                
-        Display      : X_Display_Access;                   
-        Expose       : X_Expose_Event;
-    end record;
+
+   type X_Event is record
+      Event_Type : IC.int;
+      Serial     : IC.unsigned_long;
+      Send_Event : Boolean;
+      Display    : X_Display_Access;
+      Expose     : X_Expose_Event;
+   end record;
    type X_Event_Access is access all X_Event;
 
-   
    type X_Drawable is new IC.Unsigned_Long;
    type X_Graphic_Context is new System.Address;
    type X_Graphic_Context_Access is access all X_Graphic_Context;
 
    type Const_Char_Access is access constant IC.char;
 
-  procedure X_Set_Foreground
+   procedure X_Set_Foreground
      (display    : X_Display_Access;
       gc         : X_Graphic_Context_Access;
       foreground : ic.unsigned_long)
    with Import => True, Convention => c, External_Name => "XSetForeground";
-     
-  procedure X_Draw_Point
+
+   procedure X_Draw_Point
      (display : X_Display_Access;
       w       : X_Window;
       gc      : X_Graphic_Context_Access;
@@ -96,11 +63,13 @@ package body Window is
    with Import => True, Convention => C, External_Name => "XDefaultRootWindow";
 
    function X_Black_Pixel
-     (Display : X_Display_Access; Screen_Number : IC.Int) return IC.Unsigned_Long
+     (Display : X_Display_Access; Screen_Number : IC.Int)
+      return IC.Unsigned_Long
    with Import => True, Convention => C, External_Name => "XBlackPixel";
 
    function X_White_Pixel
-     (Display : X_Display_Access; Screen_Number : IC.Int) return IC.Unsigned_Long
+     (Display : X_Display_Access; Screen_Number : IC.Int)
+      return IC.Unsigned_Long
    with Import => True, Convention => C, External_Name => "XWhitePixel";
 
    function X_Create_Simple_Window
@@ -120,6 +89,10 @@ package body Window is
 
    procedure X_Map_Window (Display : X_Display_Access; W : X_Window)
    with Import => True, Convention => C, External_Name => "XMapWindow";
+
+   procedure X_Store_Name
+     (Display : X_Display_Access; W : X_Window; Title : IC.char_array)
+   with Import => True, Convention => C, External_Name => "XStoreName";
 
    procedure X_Select_Input
      (Display : X_Display_Access; W : X_Window; Event_Mask : IC.Long)
@@ -144,20 +117,60 @@ package body Window is
       return X_Graphic_Context_Access
    with Import => True, Convention => C, External_Name => "XDefaultGC";
 
+   Display    : X_Display_Access;
+   Screen_num : IC.Int;
+   Win        : X_Window;
 
-  Display    : X_Display_Access := X_Open_Display (ICS.Null_Ptr);
-  Screen_num : IC.Int := X_Default_Screen (Display);
-  Win        : X_Window :=
-    X_Create_Simple_Window
-      (Display,
-        X_Default_Root_Window (Display),
-        50,
-        50,
-        250,
-        250,
-        1,
-        X_Black_Pixel (Display, Screen_num),
-        X_White_Pixel (Display, Screen_num));
+   procedure x_flush (display : X_Display_Access)
+   with Import => True, Convention => c, External_Name => "XFlush";   
+   
+   procedure x_send_event
+     (display    : X_Display_Access;
+      w          : X_Window;
+      propagate  : bool;
+      event_mask : ic.long;
+      event_send : X_Event_Access)
+   with Import => True, Convention => c, External_Name => "XSendEvent";
+
+   procedure redraw is
+   Event     : X_Event_Access;
+
+   begin   
+
+      Put_Line ("Redrawing window");
+
+      Event.Event_Type := Expose;
+      Event.Expose.W := Win;
+      Event.Expose.Xx := 0;
+      Event.Expose.Y := 0;
+      Event.Expose.Width := 600;
+      Event.Expose.Height := 600;
+      Event.Expose.Count := 0;
+
+      -- Send the Expose event
+      X_Send_Event (Display, Win, False, Exposure_Mask, Event);
+
+      x_flush (Display);
+   end;
+
+   procedure Init (Width, Height : IC.unsigned; Title : String) is
+   begin
+      Display := X_Open_Display (ICS.Null_Ptr);
+      Screen_num := X_Default_Screen (Display);
+      Win :=
+        X_Create_Simple_Window
+          (Display,
+           X_Default_Root_Window (Display),
+           50,
+           50,
+           Width,
+           Height,
+           1,
+           X_Black_Pixel (Display, Screen_num),
+           X_White_Pixel (Display, Screen_num));
+
+      X_Store_Name (Display, Win, IC.To_C (Title));
+   end Init;
 
    procedure draw_image_to_window (img : Image) is
       use ic;
@@ -165,8 +178,10 @@ package body Window is
       procedure draw_pixel (x : ic.int; y : ic.int; color : ic.unsigned_long)
       is
       begin
-         x_set_foreground (Display, X_Default_Graphic_Context (Display, 0), color);
-         x_draw_point (Display, win, X_Default_Graphic_Context (Display, 0), x, y);
+         x_set_foreground
+           (Display, X_Default_Graphic_Context (Display, 0), color);
+         x_draw_point
+           (Display, win, X_Default_Graphic_Context (Display, 0), x, y);
       end;
 
       x0, y0 : ic.int := 0;
@@ -176,10 +191,7 @@ package body Window is
          for j in img.r'range(2) loop
             declare
                c       : color :=
-                 (img.r (i, j),
-                  img.g (i, j),
-                  img.b (i, j),
-                  img.a (i, j));
+                 (img.r (i, j), img.g (i, j), img.b (i, j), img.a (i, j));
                c_color : ic.unsigned_long;
                for c_color'address use c'address;
             begin
@@ -192,37 +204,29 @@ package body Window is
    end;
 
    procedure Window is
-      Event_Ptr  : X_Event_Access := new X_Event;
-      c : color;
+      Event_Ptr : X_Event_Access := new X_Event;
+
+      task Window_Task is
+         entry Start;
+      end Window_Task;
+
+      task body Window_Task is
+      begin
+         accept Start;
+         X_Map_Window (Display, Win);
+         X_Select_Input (Display, Win, Exposure_Mask);
+         loop
+            X_Next_Event (Display, Event_Ptr);
+            case Event_Ptr.all.Event_Type is
+               when Expose =>
+                  null;
+               when others =>
+                  null;
+            end case;
+         end loop;
+      end Window_Task;
+
    begin
-      X_Map_Window (Display, Win);
-      X_Select_Input (Display, Win, Exposure_Mask);
-      loop
-         X_Next_Event (Display, Event_Ptr);
-         case Event_Ptr.all.Event_Type is
-            when Expose =>
-               X_Draw_String
-                 (Display,
-                  X_Drawable (Win),
-                  X_Default_Graphic_Context (Display, 0),
-                  100,
-                  100,
-                  IC.To_C ("Thanks for Watching!"),
-                  20);
-                declare
-                  c_color : ic.unsigned_long;
-                  for c_color'address use c'address;
-                begin
-                  c := (Max, 0.0, 0.0, Max);
-                  X_Set_Foreground (Display, X_Default_Graphic_Context (Display, 0), c_color);
-                  X_Draw_Point (Display, Win, X_Default_Graphic_Context (Display, 0), 50, 50);
-                  X_Draw_Point (Display, Win, X_Default_Graphic_Context (Display, 0), 50, 51);
-                  X_Draw_Point (Display, Win, X_Default_Graphic_Context (Display, 0), 51, 50);
-                  X_Draw_Point (Display, Win, X_Default_Graphic_Context (Display, 0), 51, 51);
-                end;
-            when others =>
-               null;
-         end case;
-      end loop;
+      Window_Task.Start;
    end Window;
 end Window;
