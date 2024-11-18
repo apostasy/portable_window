@@ -25,6 +25,8 @@ package body Window is
    BI_RGB              : constant := 0;
    DIB_RGB_COLORS      : constant := 0;
 
+  
+
    subtype PVOID is System.Address;
    subtype PCVOID is PVOID;
    subtype HANDLE is PVOID;
@@ -37,8 +39,13 @@ package body Window is
    subtype HCURSOR is HANDLE;
    subtype HBRUSH is HANDLE;
    subtype HGDIOBJ is HANDLE;
+   subtype HBITMAP is HANDLE;
 
    subtype DWORD is IC.unsigned_long;
+   SRCCOPY : constant DWORD := 16#cc0020#;
+
+   subtype USHORT is IC.unsigned_short;
+   subtype WORD is USHORT;
 
    type ATOM is new IC.unsigned_short;
 
@@ -46,8 +53,8 @@ package body Window is
       biSize          : DWORD   := 0;
       biWidth         : Ic.long := 0;
       biHeight        : Ic.long := 0;
-      biPlanes        : Ic.long := 0;
-      biBitCount      : Ic.long := 0;
+      biPlanes        : WORD    := 0;
+      biBitCount      : WORD    := 0;
       biCompression   : DWORD   := 0;
       biSizeImage     : DWORD   := 0;
       biXPelsPerMeter : Ic.long := 0;
@@ -240,27 +247,81 @@ package body Window is
    --     Put_Line (Last_Err'Image);
    --  end Draw_Buffer;
 
+   function Create_Compatible_DC (H_Dc  : HDC) return HDC
+   with Import => True, Convention => C, External_Name => "CreateCompatibleDC";
+
+   function Create_DIB_Section (H_Dc      : HDC;
+                                P_Bmi     : access BITMAPINFO;
+                                I_Usage   : IC.int;
+                                Ppv_Bits  : access PVOID;
+                                H_Section : HANDLE;
+                                Dw_Offset : DWORD)
+                                return HBITMAP
+   with Import => True, Convention => C, External_Name => "CreateDIBSection"; 
+
+   function Select_Object (H_Dc : HDC; Hgdi_Obj : HGDIOBJ) return HGDIOBJ
+   with Import => True, Convention => C, External_Name => "SelectObject";    
+
+   function Set_DI_Bits (H_Dc         : HDC;
+                         hbmp         : HBITMAP;
+                         U_Start_Scan : IC.unsigned;
+                         C_Scan_Lines : IC.unsigned;
+                         Lpv_Bits     : PCVOID;
+                         Lp_Bmi       : access BITMAPINFO;
+                         Fu_Color_Use : IC.unsigned) return IC.int
+   with Import => True, Convention => C, External_Name => "SetDIBits";
+
+   function Bit_Blt (hdcDest : HDC;
+                     nXDest  : IC.int;
+                     nYDest  : IC.int;
+                     nWidth  : IC.int;
+                     nHeight : IC.int;
+                     hdcSrc  : HDC;
+                     nXSrc   : IC.int;
+                     nYSrc   : IC.int;
+                     dwRop   : DWORD) return Boolean
+   with Import => True, Convention => C, External_Name => "BitBlt";
+
+   function Delete_Object (Hgdi_Obj : HGDIOBJ) return Boolean
+   with Import => True, Convention => C, External_Name => "DeleteObject";
+
+   function Delete_DC (H_Dc : HDC) return Boolean
+   with Import => True, Convention => C, External_Name => "DeleteDC";
+
+
+
+
    procedure Draw_Buffer (H_Wnd : HWND) is
       PS        : aliased PAINTSTRUCT;
       H_Dc      : HDC;
       Mem_DC    : HDC;
       H_Bitmap  : HBITMAP;
       Old_Bitmap: HBITMAP;
-      Bmi       : aliased BITMAPINFO;
-      Bits      : System.Address;
-      Buffer    : Byte_Array := (0, 0, 255, 255,    -- BGRA format
-                                 0, 0, 255, 255,
-                                 0, 0, 255, 255,
-                                 0, 0, 255, 255);
-      Success   : BOOL;
+      
+      Bmi_Reset : Byte_Array (0 .. BITMAPINFO'Size / 8 - 1) := (others => 0);
+      Bmi       : aliased BITMAPINFO with Address => Bmi_Reset'Address;
+
+      Bits      : aliased PVOID;
+      Buffer    : Byte_Array := (255, 0, 255, 0,    -- BGRA format
+                                 0,   0, 255, 0,
+                                 255, 0, 255, 255,
+                                 0,   0, 255, 255);
+      Success   : Boolean;
+      Result    : IC.int;
+      Last_Err  : DWORD;
    begin
+      Put_Line ("Enter Draw_Buffer");
       H_Dc := Begin_Paint (H_Wnd, PS'Access);
+      Put_Line ("H_Dc: " & H_Dc'Image);
 
       -- Create compatible DC
       Mem_DC := Create_Compatible_DC (H_Dc);
+      Put_Line ("Mem_DC: " & Mem_DC'Image);
+
+      Put_Line (BITMAPINFOHEADER'Size'Image);
 
       -- Setup bitmap info
-      Bmi.bmiHeader.biSize := BITMAPINFOHEADER'Size;
+      Bmi.bmiHeader.biSize := BITMAPINFOHEADER'Size / 8;
       Bmi.bmiHeader.biWidth := 2;
       Bmi.bmiHeader.biHeight := -2;  -- Top-down
       Bmi.bmiHeader.biPlanes := 1;
@@ -272,21 +333,25 @@ package body Window is
          Mem_DC, 
          Bmi'Access,
          DIB_RGB_COLORS,
-         Bits'Address,
-         0,
+         Bits'Access,
+         System.Null_Address,
          0);
+      Put_Line ("H_Bitmap: " & H_Bitmap'Image);
+      Last_Err := Get_Last_Error;
+      Put_Line ("Last_Err: " & Last_Err'Image);
 
       -- Select bitmap into DC
       Old_Bitmap := Select_Object (Mem_DC, H_Bitmap);
+      Put_Line ("Old_Bitmap: " & Old_Bitmap'Image);
 
       -- Copy pixels to DIB
-      Success := Set_DIB_Bits (
-         H_Bitmap,
-         0,
-         2,
-         Buffer'Address,
-         Bmi'Access,
-         DIB_RGB_COLORS);
+      Result := Set_DI_Bits (H_Dc,
+                             H_Bitmap, 
+                             0, 2,
+                             Buffer'Address,
+                             Bmi'Access,
+                             DIB_RGB_COLORS);
+      Put_Line ("Result := Set_DI_Bits: " & Result'Image);
 
       -- Blit to window
       Success := Bit_Blt (
@@ -296,12 +361,20 @@ package body Window is
          Mem_DC,    -- Source
          0, 0,      -- Source x,y
          SRCCOPY);  -- Copy operation
+      Put_Line ("Success := Bit_Blt: " & Success'Image);
 
       -- Cleanup
-      Select_Object (Mem_DC, Old_Bitmap);
-      Delete_Object (H_Bitmap);
-      Delete_DC (Mem_DC);
-      End_Paint (H_Wnd, PS'Access);
+      H_Bitmap := Select_Object (Mem_DC, Old_Bitmap);
+      Put_Line ("H_Bitmap: " & H_Bitmap'Image);
+
+      Success := Delete_Object (H_Bitmap);
+      Put_Line ("Success := Delete_Object: " & Success'Image);
+
+      Success := Delete_DC (Mem_DC);
+      Put_Line ("Success := Delete_DC: " & Success'Image);
+
+      Success := End_Paint (H_Wnd, PS'Access);
+      Put_Line ("Success := End_Paint: " & Success'Image);
    end Draw_Buffer;
 
    procedure Fill_Black (H_Wnd : HWND) is
@@ -323,8 +396,8 @@ package body Window is
             when WM_DESTROY =>
                Post_Quit_Message (0);
             when WM_PAINT =>
-               Fill_Black (H_Wnd);
-               --  Draw_Buffer (H_Wnd);
+               --Fill_Black (H_Wnd);
+               Draw_Buffer (H_Wnd);
             when others =>
                 return Def_Window_Proc(H_Wnd, Msg, W_Param, L_Param);
         end case;
