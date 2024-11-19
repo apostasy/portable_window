@@ -112,4 +112,12 @@ package body Window is
             end loop;
         end;
    end Window;
+
+   task Background_Task is
+   end Background_Task;
+
+   task body Background_Task is
+   begin
+      Window;
+   end Background_Task;
 end Window;
