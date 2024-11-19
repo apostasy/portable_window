@@ -1,3 +1,3 @@
 package Window is
-   procedure Window;
+   pragma Elaborate_Body;
 end Window;

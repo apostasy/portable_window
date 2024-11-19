@@ -2,5 +2,6 @@ with Window;
 
 procedure Portable_Window is
 begin
-   Window.Window;
+   null;
+   --Window.Window;
 end Portable_Window;
